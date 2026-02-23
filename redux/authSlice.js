@@ -1,118 +1,157 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import api from "../services/api";
 
-const getAuthErrorMessage = (error, fallbackMessage) => {
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  }
-
-  if (error.code === "ECONNABORTED") {
-    return "Server timeout. Please try again.";
-  }
-
-  if (!error.response) {
-    return "Cannot connect to server. Check API URL and network.";
-  }
-
-  return fallbackMessage;
-};
-
-export const checkLoginStatus = createAsyncThunk(
-  "auth/checkLoginStatus",
-  async () => {
-    try {
-      const token = await AsyncStorage.getItem("userToken");
-      const storedUserData = await AsyncStorage.getItem("userData");
-
-      if (token) {
-        api.defaults.headers.common.Authorization = `Bearer ${token}`;
-      } else {
-        delete api.defaults.headers.common.Authorization;
-      }
-
-      return {
-        token: token || null,
-        user: storedUserData ? JSON.parse(storedUserData) : null,
-      };
-    } catch (error) {
-      console.log("Error checking login status:", error);
-      return { token: null, user: null };
-    }
-  }
-);
+const normalizeEmail = (email) => email?.trim().toLowerCase() || "";
 
 export const login = createAsyncThunk(
-  "auth/login",
-  async ({ email, password }, { rejectWithValue }) => {
-    try {
-      const response = await api.post("/login", { email, password });
-      const { token, user } = response.data;
+  "auth/login", 
+  async ({ email, password }, { getState, rejectWithValue }) => {
+    const state = getState();
+    const normalizedEmail = normalizeEmail(email);
+    const user = state.auth.users.find((u) => u.email === normalizedEmail);
 
-      await AsyncStorage.setItem("userToken", token);
-      await AsyncStorage.setItem("userData", JSON.stringify(user));
-      api.defaults.headers.common.Authorization = `Bearer ${token}`;
-
-      return { token, user };
-    } catch (error) {
-      return rejectWithValue(getAuthErrorMessage(error, "Invalid email or password"));
+    if (!user || user.password !== password) {
+      return rejectWithValue("Invalid email or password");
     }
+
+    const token = `local-${user.id}`;
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    };
   }
 );
 
 export const signup = createAsyncThunk(
   "auth/signup",
-  async ({ name, email, password }, { rejectWithValue }) => {
+  async ({ name, email, password }, { getState, rejectWithValue }) => {
+    const state = getState();
+    const normalizedEmail = normalizeEmail(email);
+
+    const existingUser = state.auth.users.find(
+      (u) => u.email === normalizedEmail
+    );
+
+    if (existingUser) {
+      return rejectWithValue("User already registered. Please login.");
+    }
+
+    if (password.length < 6) {
+      return rejectWithValue("Password must be at least 6 characters");
+    }
+
+    const user = {
+      id: Date.now(),
+      name: name.trim(),
+      email: normalizedEmail,
+      password,
+      createdAt: new Date().toISOString(),
+    };
+
+    const token = `local-${user.id}`;
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+      rawUser: user,
+    };
+  }
+);
+
+export const updateUserProfile = createAsyncThunk(
+  "auth/updateUserProfile",
+  async (payload, { getState, rejectWithValue }) => {
     try {
-      const response = await api.post("/signup", { name, email, password });
-      const { token, user } = response.data;
+      const state = getState();
+      const currentUser = state.auth.userData;
 
-      await AsyncStorage.setItem("userToken", token);
-      await AsyncStorage.setItem("userData", JSON.stringify(user));
-      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+      // Handle password change
+      if (payload.currentPassword && payload.newPassword) {
+        const user = state.auth.users.find((u) => u.id === currentUser.id);
+        
+        if (!user || user.password !== payload.currentPassword) {
+          return rejectWithValue("Current password is incorrect");
+        }
 
-      return { token, user };
+        // Create updated users array
+        const updatedUsers = state.auth.users.map((u) => 
+          u.id === currentUser.id 
+            ? { ...u, password: payload.newPassword }
+            : u
+        );
+
+        // Save to AsyncStorage
+        await AsyncStorage.setItem("authState", JSON.stringify({
+          ...state.auth,
+          users: updatedUsers
+        }));
+        
+        return { 
+          type: 'password',
+          users: updatedUsers,
+          userData: currentUser 
+        };
+      }
+
+      // Handle profile update (name/image)
+      if (payload.name || payload.profileImage) {
+        const updatedUser = {
+          ...currentUser,
+          ...(payload.name && { name: payload.name }),
+          ...(payload.profileImage && { profileImage: payload.profileImage }),
+        };
+
+        // Update in users array
+        const updatedUsers = state.auth.users.map((u) => 
+          u.id === currentUser.id 
+            ? { ...u, ...payload }
+            : u
+        );
+
+        // Save to AsyncStorage
+        await AsyncStorage.setItem("userData", JSON.stringify(updatedUser));
+        await AsyncStorage.setItem("authState", JSON.stringify({
+          ...state.auth,
+          users: updatedUsers
+        }));
+        
+        return {
+          type: 'profile',
+          users: updatedUsers,
+          userData: updatedUser
+        };
+      }
     } catch (error) {
-      return rejectWithValue(getAuthErrorMessage(error, "Signup failed"));
+      return rejectWithValue(error.message || "An error occurred");
     }
   }
 );
 
-export const logout = createAsyncThunk("auth/logout", async () => {
-  try {
-    await AsyncStorage.removeItem("userToken");
-    await AsyncStorage.removeItem("userData");
-    delete api.defaults.headers.common.Authorization;
-    return true;
-  } catch (error) {
-    console.log("Logout error:", error);
-    return false;
-  }
-});
+export const logout = createAsyncThunk("auth/logout", async () => true);
 
 const authSlice = createSlice({
   name: "auth",
   initialState: {
+    users: [],
     userToken: null,
     userData: null,
-    loading: true,
+    loading: false,
     error: null,
   },
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(checkLoginStatus.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(checkLoginStatus.fulfilled, (state, action) => {
-        state.userToken = action.payload.token;
-        state.userData = action.payload.user;
-        state.loading = false;
-      })
-      .addCase(checkLoginStatus.rejected, (state) => {
-        state.loading = false;
-      })
       .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -131,6 +170,9 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(signup.fulfilled, (state, action) => {
+        if (action.payload.rawUser) {
+          state.users.push(action.payload.rawUser); 
+        }
         state.userToken = action.payload.token;
         state.userData = action.payload.user;
         state.loading = false;
@@ -138,6 +180,23 @@ const authSlice = createSlice({
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || "Signup failed";
+      })
+      .addCase(updateUserProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateUserProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        // Update users array with the new data
+        state.users = action.payload.users;
+        // Update userData only if profile was changed
+        if (action.payload.type === 'profile') {
+          state.userData = action.payload.userData;
+        }
+      })
+      .addCase(updateUserProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       })
       .addCase(logout.pending, (state) => {
         state.loading = true;
@@ -147,8 +206,9 @@ const authSlice = createSlice({
         state.userData = null;
         state.loading = false;
       })
-      .addCase(logout.rejected, (state) => {
+      .addCase(logout.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.payload;
       });
   },
 });

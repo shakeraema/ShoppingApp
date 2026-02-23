@@ -20,29 +20,40 @@ import {
 import GoogleSVGComponent from "../assets/Google";
 import { login } from "../redux/authSlice";
 
-const LoginScreen = ({ navigation }) => {
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const dispatch = useDispatch();
-  const loading = useSelector((state) => state.auth.loading);
+const LoginScreen = ({ navigation }) => { // Add navigation prop to access navigation functions
+  const [showPassword, setShowPassword] = useState(false); //password vissibility show korar jonne state variable
+  const [email, setEmail] = useState(""); //email input er value store korar jonne state variable
+  const [password, setPassword] = useState(""); //password input er value store korar jonne state variable
+  const dispatch = useDispatch(); //redux action dispatch korar jonne useDispatch hook
+  const loading = useSelector((state) => state.auth.loading); //redux store theke loading state access korar jonne useSelector hook
 
   // Email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const isEmailValid = emailRegex.test(email);
-  const showEmailError = email.trim() !== '' && !isEmailValid;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; 
+  // \s@+ means one or more characters that are not whitespace or @, followed by an @ symbol, followed by one or more characters that are not whitespace or @, followed by a dot, followed by one or more characters that are not whitespace or @. This is a basic regex for validating email formats.
+  const isEmailValid = emailRegex.test(email); 
+  //email input er value regex pattern er sathe match kore kina check korar jonne variable
+  const showEmailError = email.trim() !== '' && !isEmailValid; 
+  //email input er value empty na hole and also (eki sathe) regex pattern er sathe match na korle error message show korar jonne variable
 
-  const isFormValid = email.trim() && password.trim() && isEmailValid;
-  const isLoginDisabled = loading || !isFormValid;
+  const isPasswordValid = password.length >= 6;
+  //password input er value minimum 6 character kina check korar jonne variable
+  const isFormValid = email.trim() && password.trim() && isEmailValid && isPasswordValid; 
+  //email and password input er value empty na hole and also email valid hole password valid hole form valid hobe, otherwise form invalid hobe. Login button ke disable korar jonne variable
+  const isLoginDisabled = loading || !isFormValid; //Login button ke disable korar jonne variable, loading state true hole or form invalid hole button disable hobe
 
-  const handleLogin = async () => {
-    if (!email || !password) {
+  const handleLogin = async () => { //Login button click korar jonne function
+    if (!email || !password) { //email or password input empty hole error message show korar jonne condition
       Alert.alert("Error", "Please enter both email and password");
       return;
     }
 
-    if (!isEmailValid) {
+    if (!isEmailValid) { //email input er value valid na hole error message show korar jonne condition
       Alert.alert("Error", "Please enter a valid email address");
+      return;
+    }
+
+    if (!isPasswordValid) { //password input er value valid na hole error message show korar jonne condition
+      Alert.alert("Error", "Password must be at least 6 characters long");
       return;
     }
 

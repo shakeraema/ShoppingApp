@@ -15,9 +15,9 @@ import { logout } from "../redux/authSlice";
 const ProfileScreen = ({ navigation }) => {
   const menuItems = [
     { id: "1", title: "My Cart", icon: "shopping-cart", screen: "Cart" },
-    { id: "2", title: "My Orders", icon: "shopping-bag", screen: "Home" },
+    { id: "2", title: "My Orders", icon: "shopping-bag", screen: "Orders" },
     { id: "3", title: "My Wishlist", icon: "favorite-border", screen: "Home" },
-    { id: "4", title: "Payment Methods", icon: "payment", screen: "Home" },
+    { id: "4", title: "Payment Methods", icon: "payment", screen: "PaymentMethods" },
     { id: "5", title: "Address Book", icon: "location-on", screen: "Home" },
     { id: "6", title: "Settings", icon: "settings", screen: "Home" },
     { id: "7", title: "Help Center", icon: "help-outline", screen: "Home" },
@@ -52,7 +52,7 @@ const ProfileScreen = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#000" />
+          <MaterialIcons name="arrow-back" size={34} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={{ width: 24 }} />
@@ -66,7 +66,10 @@ const ProfileScreen = ({ navigation }) => {
           </View>
           <Text style={styles.userName}>{userData?.name || "User"}</Text>
           <Text style={styles.userEmail}>{userData?.email || "user@example.com"}</Text>
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => navigation.navigate("EditProfile")}
+          >
             <Text style={styles.editButtonText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
@@ -193,6 +196,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: "#FFF5F5",
     gap: 10,
+    marginBottom: 50,
   },
   logoutText: {
     fontSize: 16,

@@ -8,21 +8,18 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import React, { useEffect } from "react";
+import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
-import { fetchCart, removeFromCart, updateQuantity } from "../redux/cartSlice";
+import { removeFromCart, updateQuantity } from "../redux/cartSlice";
 
 const CartScreen = ({ navigation }) => {
   const dispatch = useDispatch();
-  const { cart, loading } = useSelector((state) => state.cart);
+  const { cartsByUser, loading } = useSelector((state) => state.cart);
+  const userId = useSelector((state) => state.auth.userData?.id);
+  const cart = (userId && cartsByUser[userId]) || [];
   const getTotalPrice = () =>
     cart.reduce((total, item) => total + item.productPrice * item.quantity, 0);
-
-  useEffect(() => {
-    // Fetch cart items when screen loads
-    dispatch(fetchCart());
-  }, [dispatch]);
 
   const handleRemoveItem = (itemId) => {
     Alert.alert(
@@ -46,11 +43,11 @@ const CartScreen = ({ navigation }) => {
     );
   };
 
-  const handleIncreaseQuantity = async (itemId, currentQuantity) => {
+  const handleIncreaseQuantity = async (itemId, currentQuantity) => { //itemId mane kon item er quantity update korte hobe, currentQuantity mane oi item er current quantity
     try {
       await dispatch(
         updateQuantity({ itemId, quantity: currentQuantity + 1 })
-      ).unwrap();
+      ).unwrap(); //dispatch er maddhome updateQuantity action call kora, jekhane itemId and new quantity pass kora hoyeche, unwrap mane promise ke resolve kora, jodi update successful hoye tobe success message deya hobe, otherwise error message deya hobe
     } catch (error) {
       Alert.alert("Error", "Failed to update quantity");
     }
@@ -68,37 +65,55 @@ const CartScreen = ({ navigation }) => {
     }
   };
 
+  const handleNavigateToProduct = (item) => {
+    // Transform cart item to product format expected by ProductDetailScreen
+    const product = {
+      id: item.productId || item.id,
+      name: item.productName,
+      price: `₦ ${item.productPrice.toLocaleString()}`,
+      image: typeof item.productImage === "string" ? { uri: item.productImage } : item.productImage,
+      description: item.productDescription || null,
+    };
+    navigation.navigate("ProductDetail", { product });
+  };
+
   const renderCartItem = ({ item }) => (
     <View style={styles.cartItem}>
-      <Image
-        source={typeof item.productImage === "string" ? { uri: item.productImage } : item.productImage}
-        style={styles.productImage}
-      />
-      <View style={styles.itemDetails}>
-        <Text style={styles.itemName}>{item.productName}</Text>
-        <Text style={styles.itemSize}>Size: {item.size}</Text>
-        <Text style={styles.itemPrice}>₦ {item.productPrice.toLocaleString()}</Text>
+      <TouchableOpacity 
+        style={styles.productTouchable}
+        onPress={() => handleNavigateToProduct(item)}
+        activeOpacity={0.7}
+      >
+        <Image
+          source={typeof item.productImage === "string" ? { uri: item.productImage } : item.productImage}
+          style={styles.productImage}
+        />
+        <View style={styles.itemDetails}>
+          <Text style={styles.itemName}>{item.productName}</Text>
+          <Text style={styles.itemSize}>Size: {item.size}</Text>
+          <Text style={styles.itemPrice}>₦ {item.productPrice.toLocaleString()}</Text>
 
-        <View style={styles.quantityContainer}>
-          <TouchableOpacity
-            style={styles.quantityButton}
-            onPress={() => handleDecreaseQuantity(item.id, item.quantity)}
-          >
-            <MaterialIcons name="remove" size={18} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.quantityText}>{item.quantity}</Text>
-          <TouchableOpacity
-            style={styles.quantityButton}
-            onPress={() => handleIncreaseQuantity(item.id, item.quantity)}
-          >
-            <MaterialIcons name="add" size={18} color="#000" />
-          </TouchableOpacity>
+          <View style={styles.quantityContainer}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => handleDecreaseQuantity(item.id, item.quantity)}
+            >
+              <MaterialIcons name="remove" size={18} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.quantityText}>{item.quantity}</Text>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => handleIncreaseQuantity(item.id, item.quantity)}
+            >
+              <MaterialIcons name="add" size={18} color="#000" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.itemTotal}>
+            ₦ {(item.productPrice * item.quantity).toLocaleString()}
+          </Text>
         </View>
-
-        <Text style={styles.itemTotal}>
-          ₦ {(item.productPrice * item.quantity).toLocaleString()}
-        </Text>
-      </View>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.deleteButton}
@@ -138,7 +153,7 @@ const CartScreen = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#000" />
+          <MaterialIcons name="arrow-back" size={34} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Cart</Text>
         <View style={{ width: 24 }} />
@@ -229,6 +244,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#f0f0f0",
   },
+  productTouchable: {
+    flexDirection: "row",
+    flex: 1,
+  },
   productImage: {
     width: 80,
     height: 100,
@@ -264,10 +283,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   quantityButton: {
-    width: 28,
-    height: 28,
+    width: 45,
+    height: 45,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: "#ddd",
     justifyContent: "center",
     alignItems: "center",
@@ -330,11 +349,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: "center",
+    marginBottom: 30,
   },
   checkoutButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+    bottom: 2,
   },
   emptyContainer: {
     flex: 1,

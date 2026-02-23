@@ -9,40 +9,70 @@ import {
   Switch,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  // SafeAreaView,
 } from "react-native";
-import React, { useState } from "react";
-import { useSelector } from "react-redux";
+import { SafeAreaView } from "react-native-safe-area-context";
+import React, { useEffect, useState } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
+import { clearCart } from "../redux/cartSlice";
+import { createOrder } from "../redux/ordersSlice";
+import {
+  saveBillingAddress,
+  saveCardDetails,
+  savePaymentMethod,
+  saveShippingAddress,
+} from "../redux/checkoutSlice";
 
 const CheckoutScreen = ({ navigation }) => {
-  const { cart } = useSelector((state) => state.cart);
+  const { cartsByUser } = useSelector((state) => state.cart);
+  const userId = useSelector((state) => state.auth.userData?.id);
+  const user = useSelector((state) => state.auth.userData);
+  const savedCheckout = useSelector(
+    (state) => state.checkout.savedByUser[userId] || null
+  );
+  const cart = (userId && cartsByUser[userId]) || [];
+  const dispatch = useDispatch();
   const getTotalPrice = () =>
     cart.reduce((total, item) => total + item.productPrice * item.quantity, 0);
 
+  // Loading State
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+
   // Shipping Address State
-  const [shippingAddress, setShippingAddress] = useState({
+  const emptyShippingAddress = {
     firstName: "",
     lastName: "",
     streetAddress: "",
     aptNumber: "",
     state: "",
     zip: "",
-  });
-
-  // Billing Address State
-  const [billingAddress, setBillingAddress] = useState({
+  };
+  const emptyBillingAddress = {
     streetAddress: "",
     aptNumber: "",
     state: "",
     zip: "",
-  });
+  };
+
+  const [shippingAddress, setShippingAddress] = useState(
+    savedCheckout?.savedShippingAddress || emptyShippingAddress
+  );
+
+  // Billing Address State
+  const [billingAddress, setBillingAddress] = useState(
+    savedCheckout?.savedBillingAddress || emptyBillingAddress
+  );
 
   // Payment Method State
-  const [paymentMethod, setPaymentMethod] = useState("card"); // 'card', 'bkash', 'cod'
+  const [paymentMethod, setPaymentMethod] = useState(
+    savedCheckout?.savedPaymentMethod || "card"
+  ); // 'card', 'bkash', 'cod'
   const [cardDetails, setCardDetails] = useState({
-    number: "",
-    expiry: "",
-    cvv: "",
+    number: savedCheckout?.savedCardDetails?.number || "",
+    expiry: savedCheckout?.savedCardDetails?.expiry || "",
+    cvv: savedCheckout?.savedCardDetails?.cvv || "",
   });
 
   // Toggles
@@ -59,7 +89,26 @@ const CheckoutScreen = ({ navigation }) => {
   const orderTotal = beforeTax + tax;
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const handlePlaceOrder = () => {
+  useEffect(() => {
+    if (!savedCheckout) {
+      setShippingAddress(emptyShippingAddress);
+      setBillingAddress(emptyBillingAddress);
+      setPaymentMethod("card");
+      setCardDetails({ number: "", expiry: "", cvv: "" });
+      return;
+    }
+
+    setShippingAddress(savedCheckout.savedShippingAddress);
+    setBillingAddress(savedCheckout.savedBillingAddress);
+    setPaymentMethod(savedCheckout.savedPaymentMethod);
+    setCardDetails(savedCheckout.savedCardDetails);
+  }, [savedCheckout]);
+
+  const handlePlaceOrder = async () => {
+    if (!userId || !user) {
+      Alert.alert("Error", "Please login to place an order");
+      return;
+    }
     // Validate shipping address
     if (
       !shippingAddress.firstName ||
@@ -86,33 +135,74 @@ const CheckoutScreen = ({ navigation }) => {
       return;
     }
 
-    // Show success message
-    Alert.alert(
-      "Order Placed Successfully!",
-      `Your order of ${itemCount} items totaling ₦${orderTotal.toFixed(2)} has been placed.`,
-      [
-        {
-          text: "OK",
-          onPress: () => navigation.navigate("Home"),
-        },
-      ]
-    );
+    // Check if cart is empty
+    if (cart.length === 0) {
+      Alert.alert("Error", "Your cart is empty");
+      return;
+    }
+
+    setIsPlacingOrder(true);
+
+    try {
+      // Prepare order data
+      const orderData = {
+        shippingAddress,
+        billingAddress: sameAsBilling ? shippingAddress : billingAddress,
+        paymentMethod,
+        items: cart,
+        subtotal,
+        shipping,
+        tax,
+        total: orderTotal,
+      };
+
+      const response = await dispatch(createOrder(orderData)).unwrap();
+
+      if (saveAddress) {
+        dispatch(saveShippingAddress({ userId, address: shippingAddress }));
+        dispatch(
+          saveBillingAddress({
+            userId,
+            address: sameAsBilling ? shippingAddress : billingAddress,
+          })
+        );
+      }
+
+      if (saveCard && paymentMethod === "card") {
+        dispatch(saveCardDetails({ userId, card: cardDetails }));
+      }
+
+      dispatch(savePaymentMethod({ userId, method: paymentMethod }));
+
+      // Clear cart from Redux after successful order
+      dispatch(clearCart());
+
+      // Show success message with order ID
+      Alert.alert(
+        "Order Placed Successfully!",
+        `Your order #${response.order.id} has been placed.\nTotal: ₦${orderTotal.toFixed(2)}`,
+        [
+          {
+            text: "View Orders",
+            onPress: () => navigation.navigate("Orders"),
+          },
+          {
+            text: "Go to Home",
+            onPress: () => navigation.navigate("Home"),
+          },
+        ]
+      );
+    } catch (error) {
+      console.error("Order placement error:", error);
+      Alert.alert("Order Failed", error || "Failed to place order. Please try again.");
+    } finally {
+      setIsPlacingOrder(false);
+    }
   };
 
   const renderShippingAddress = () => (
-    <KeyboardAvoidingView
-          style={styles.container}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Shipping Address</Text>
-    {/* <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}> */}
 
       <View style={styles.row}>
         <View style={[styles.inputContainer, styles.halfWidth]}>
@@ -190,7 +280,7 @@ const CheckoutScreen = ({ navigation }) => {
           />
         </View>
       </View>
-     
+
       <View style={styles.switchContainer}>
         <Text style={styles.switchLabel}>Save this Address</Text>
         <Switch
@@ -207,9 +297,6 @@ const CheckoutScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
     </View>
-    </ScrollView>
-     </KeyboardAvoidingView>
-
   );
 
   const renderOrderSummary = () => (
@@ -247,16 +334,6 @@ const CheckoutScreen = ({ navigation }) => {
   );
 
   const renderPaymentMethod = () => (
-    <KeyboardAvoidingView
-          style={styles.container}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Payment Method</Text>
 
@@ -330,7 +407,8 @@ const CheckoutScreen = ({ navigation }) => {
       </View>
 
       {/* Card Details Form */}
-      {paymentMethod === "card" && ( 
+      {paymentMethod === "card" && (
+        <>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Card Number</Text>
             <TextInput
@@ -343,7 +421,7 @@ const CheckoutScreen = ({ navigation }) => {
               keyboardType="numeric"
               maxLength={16}
             />
-          </View>)}
+          </View>
 
           <View style={styles.row}>
             <View style={[styles.inputContainer, styles.halfWidth]}>
@@ -451,10 +529,10 @@ const CheckoutScreen = ({ navigation }) => {
                   />
                 </View>
               </View>
-              </>
+            </>
           )}
-          
-        
+        </>
+      )}
 
       {/* bKash Payment Info */}
       {paymentMethod === "bkash" && (
@@ -476,75 +554,93 @@ const CheckoutScreen = ({ navigation }) => {
         </View>
       )}
     </View>
-        </ScrollView>
-        </KeyboardAvoidingView>
   );
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Checkout</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
-      {/* Scrollable Content */}
-      <ScrollView 
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        {renderShippingAddress()}
-        {renderOrderSummary()}
-        {renderPaymentMethod()}
-
-        {/* Terms Agreement */}
-        <View style={styles.termsContainer}>
-          <TouchableOpacity
-            style={styles.checkbox}
-            onPress={() => setAgreeToTerms(!agreeToTerms)}
-          >
-            <MaterialIcons
-              name={agreeToTerms ? "check-box" : "check-box-outline-blank"}
-              size={24}
-              color={agreeToTerms ? "rgba(248, 55, 88, 1)" : "#ccc"}
-            />
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <MaterialIcons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.termsText}>
-            By placing your order, you agree to our company{" "}
-            <Text style={styles.termsLink}>Privacy policy</Text> and{" "}
-            <Text style={styles.termsLink}>Conditions of use</Text>.
-          </Text>
+          <Text style={styles.headerTitle}>Checkout</Text>
+          <View style={{ width: 24 }} />
         </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
+        {/* Scrollable Content */}
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderShippingAddress()}
+          {renderOrderSummary()}
+          {renderPaymentMethod()}
 
-          <TouchableOpacity
-            style={styles.placeOrderButton}
-            onPress={handlePlaceOrder}
-          >
-            <Text style={styles.placeOrderButtonText}>Place Order</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Terms Agreement */}
+          <View style={styles.termsContainer}>
+            <TouchableOpacity
+              style={styles.checkbox}
+              onPress={() => setAgreeToTerms(!agreeToTerms)}
+            >
+              <MaterialIcons
+                name={agreeToTerms ? "check-box" : "check-box-outline-blank"}
+                size={24}
+                color={agreeToTerms ? "rgba(248, 55, 88, 1)" : "#ccc"}
+              />
+            </TouchableOpacity>
+            <Text style={styles.termsText}>
+              By placing your order, you agree to our company{" "}
+              <Text style={styles.termsLink}>Privacy policy</Text> and{" "}
+              <Text style={styles.termsLink}>Conditions of use</Text>.
+            </Text>
+          </View>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </View>
+          {/* Action Buttons */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.placeOrderButton,
+                isPlacingOrder && styles.placeOrderButtonDisabled,
+              ]}
+              onPress={handlePlaceOrder}
+              disabled={isPlacingOrder}
+            >
+              {isPlacingOrder ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.placeOrderButtonText}>Place Order</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 export default CheckoutScreen;
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fff",
@@ -554,7 +650,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: 15,
     paddingBottom: 15,
     backgroundColor: "#fff",
     borderBottomWidth: 1,
@@ -567,6 +663,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
   },
   section: {
@@ -754,6 +852,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 15,
     alignItems: "center",
+  },
+  placeOrderButtonDisabled: {
+    backgroundColor: "rgba(248, 55, 88, 0.5)",
   },
   placeOrderButtonText: {
     fontSize: 16,

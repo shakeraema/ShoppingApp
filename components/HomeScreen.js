@@ -63,6 +63,14 @@ const HomeScreen = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const dispatch = useDispatch();
   const userData = useSelector((state) => state.auth.userData);
+  const userId = userData?.id;
+  const userCart = useSelector((state) => // Get the cart for the current user from the cart state, if the user is not logged in, return an empty array
+    userId ? state.cart.cartsByUser[userId] || [] : []
+  );
+  const cartQuantity = userCart.reduce(
+    (total, item) => total + Number(item.quantity || 0),
+    0
+  );
 
    const handleLogout = () => {
     Alert.alert(
@@ -136,15 +144,30 @@ const HomeScreen = ({ navigation }) => {
           style={styles.iconButton}
         >
           <View style={styles.avatarContainer}>
-          <MaterialIcons name="person" size={24} color="#ffffff" />
+          <MaterialIcons name="person" size={30} color="#ffffff" />
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("Search")}
-          style={styles.iconButton}
-        >
-          <MaterialIcons name="search" size={24} color="#000" />
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Search")}
+            style={styles.iconButton}
+          >
+            <MaterialIcons name="search" size={34} color="#000" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Cart")}
+            style={styles.cartButton}
+          >
+            <MaterialIcons name="shopping-cart" size={34} color="#000" />
+            {cartQuantity > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>
+                  {cartQuantity > 99 ? "99+" : cartQuantity}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -241,6 +264,36 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: "center",
     alignItems: "center",
+  },
+  headerRightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  cartButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  cartBadge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#FF3B30",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  cartBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    fontFamily: "Inter",
   },
   greetingSection: {
     paddingHorizontal: 20,

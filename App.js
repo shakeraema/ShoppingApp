@@ -1,12 +1,12 @@
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View, ActivityIndicator } from "react-native";
 import { useEffect } from "react";
-import { Provider, useDispatch, useSelector } from "react-redux";
+import { Provider, useSelector } from "react-redux";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
-import store from "./redux/store";
-import { checkLoginStatus } from "./redux/authSlice";
+import { PersistGate } from "redux-persist/integration/react";
+import store, { persistor } from "./redux/store";
 // import SplashScreen from "./assets/SplashScreen";
 import {
   WelcomeScreen,
@@ -19,6 +19,10 @@ import {
   ProductDetailScreen,
   CartScreen,
   CheckoutScreen,
+  OrdersScreen,
+  OrderDetailScreen,
+  PaymentMethodsScreen,
+  EditProfileScreen,
 } from "./components";
 import EntryScreen from "./components/EntryScreen";
 
@@ -73,26 +77,17 @@ function AppStack() {
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
+      <Stack.Screen name="Orders" component={OrdersScreen} />
+      <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+      <Stack.Screen name="PaymentMethods" component={PaymentMethodsScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     </Stack.Navigator>
   );
 }
 
 // Main Navigation Component
 function AppNav() {
-  const dispatch = useDispatch();
-  const { userToken, loading } = useSelector((state) => state.auth);
-
-  useEffect(() => {
-    dispatch(checkLoginStatus());
-  }, [dispatch]);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="rgba(248, 55, 88, 1)" />
-      </View>
-    );
-  }
+  const { userToken } = useSelector((state) => state.auth); // Get the user token from the auth state to determine which stack to show
 
   return userToken ? <AppStack /> : <AuthStack />;
 }
@@ -100,10 +95,19 @@ function AppNav() {
 export default function App() {
   return (
     <Provider store={store}>
-      <NavigationContainer>
-        <AppNav />
-        <StatusBar style="auto" />
-      </NavigationContainer>
+      <PersistGate
+        loading={
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="rgba(248, 55, 88, 1)" />
+          </View>
+        }
+        persistor={persistor}
+      >
+        <NavigationContainer>
+          <AppNav />
+          <StatusBar style="auto" />
+        </NavigationContainer>
+      </PersistGate>
     </Provider>
   );
 }

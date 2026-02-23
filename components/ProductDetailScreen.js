@@ -63,11 +63,11 @@ const ProductDetailScreen = ({ navigation, route }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#000" />
+          <MaterialIcons name="arrow-back" size={34} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Product Details</Text>
         <TouchableOpacity>
-          <MaterialIcons name="favorite-border" size={24} color="#000" />
+          <MaterialIcons name="favorite-border" size={30} color="#000" />
         </TouchableOpacity>
       </View>
 
@@ -342,6 +342,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#d7cfcf",
     borderTopWidth: 1,
     borderTopColor: "#f0f0f0",
+    // marginBottom: 20,
   },
   totalContainer: {
     flex: 1,
@@ -349,12 +350,13 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: 12,
     color: "#343333",
-    marginBottom: 4,
+    marginBottom: 10,
   },
   totalPrice: {
     fontSize: 20,
     fontWeight: "700",
     color: "#000",
+    marginBottom: 30,
   },
   addToCartButton: {
     flexDirection: "row",
@@ -364,6 +366,12 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     alignItems: "center",
     gap: 12,
+    marginBottom: 30,
+  },
+  addToCartButtonActive: {
+    backgroundColor: "#000",
+  },
+  addToCartText: {
   },
   addToCartButtonDisabled: {
     opacity: 0.6,

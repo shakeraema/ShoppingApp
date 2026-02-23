@@ -8,3 +8,7 @@ export { default as CategoriesScreen } from "./CategoriesScreen";
 export { default as ProductDetailScreen } from "./ProductDetailScreen";
 export { default as CartScreen } from "./CartScreen";
 export { default as CheckoutScreen } from "./CheckoutScreen";
+export { default as OrdersScreen } from "./OrdersScreen";
+export { default as OrderDetailScreen } from "./OrderDetailScreen";
+export { default as PaymentMethodsScreen } from "./PaymentMethodScreen";
+export { default as EditProfileScreen } from "./EditProfileScreen";

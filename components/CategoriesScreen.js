@@ -45,7 +45,7 @@ const CategoriesScreen = ({ navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color="#000" />
+          <MaterialIcons name="arrow-back" size={34} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>All Categories</Text>
         <View style={{ width: 24 }} />
