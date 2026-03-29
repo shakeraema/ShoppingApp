@@ -10,20 +10,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Pressable,
   // SafeAreaView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
-import { clearCart } from "../redux/cartSlice";
-import { createOrder } from "../redux/ordersSlice";
+import { clearCart } from "../redux/thunks/clearCart.js";
+import { createOrder } from "../redux/thunks/createOrder.js";
 import {
   saveBillingAddress,
   saveCardDetails,
   savePaymentMethod,
   saveShippingAddress,
-} from "../redux/checkoutSlice";
+} from "../redux/slices/checkoutSlice.js";
+import { getDummyUserProfile } from "../services/authApi.js";
 
 const CheckoutScreen = ({ navigation }) => {
   const { cartsByUser } = useSelector((state) => state.cart);
@@ -39,6 +41,11 @@ const CheckoutScreen = ({ navigation }) => {
 
   // Loading State
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+
+  const userData = useSelector((state) => state.auth.userData);
+  const [userAddresses, setUserAddresses] = useState([]);
+  const [showAddressOptions, setShowAddressOptions] = useState(false);
+
 
   // Shipping Address State
   const emptyShippingAddress = {
@@ -81,6 +88,19 @@ const CheckoutScreen = ({ navigation }) => {
   const [sameAsBilling, setSameAsBilling] = useState(true);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
 
+  const mapDummyAddress = (address, firstName = "", lastName = "") => {
+    if (!address) return emptyShippingAddress;
+
+    return {
+      firstName,
+      lastName,
+      streetAddress: [address?.address, address?.city].filter(Boolean).join(", "),
+      aptNumber: address?.address2 || "",
+      state: address?.state || "",
+      zip: String(address?.postalCode || ""),
+    };
+  };
+
   // Calculate Order Summary
   const subtotal = getTotalPrice();
   const shipping = 5.50;
@@ -103,6 +123,123 @@ const CheckoutScreen = ({ navigation }) => {
     setPaymentMethod(savedCheckout.savedPaymentMethod);
     setCardDetails(savedCheckout.savedCardDetails);
   }, [savedCheckout]);
+
+  useEffect(() => {
+    if (!userId || savedCheckout) return;
+
+    let isMounted = true;
+
+    const setDefaultsFromDummyUser = async () => {
+      try {
+        const profile = await getDummyUserProfile(userId);
+        if (!isMounted) return;
+
+        const defaultAddress = mapDummyAddress(
+          profile?.address,
+          profile?.firstName || "",
+          profile?.lastName || ""
+        );
+
+        const companyAddress = profile?.company?.address
+          ? mapDummyAddress(
+              profile.company.address,
+              profile?.firstName || "",
+              profile?.lastName || ""
+            )
+          : null;
+
+        const addresses = [
+          { id: "home", label: "Home Address", value: defaultAddress },
+          ...(companyAddress
+            ? [{ id: "company", label: "Company Address", value: companyAddress }]
+            : []),
+        ];
+
+        setUserAddresses(addresses);
+
+        setShippingAddress((prev) => {
+          const hasUserInput = Object.values(prev).some((value) => String(value || "").trim());
+          return hasUserInput ? prev : defaultAddress;
+        });
+
+        setBillingAddress((prev) => {
+          const hasUserInput = Object.values(prev).some((value) => String(value || "").trim());
+          return hasUserInput ? prev : defaultAddress;
+        });
+
+        setCardDetails((prev) => ({
+          number:
+            prev.number || String(profile?.bank?.cardNumber || "").replace(/\s+/g, ""),
+          expiry: prev.expiry || String(profile?.bank?.cardExpire || ""),
+          cvv: prev.cvv || "",
+        }));
+      } catch (error) {
+        setUserAddresses([]);
+      }
+    };
+
+    setDefaultsFromDummyUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userId, savedCheckout]);
+
+  const handleAddNewAddress = () => {
+    const nextAddress = {
+      firstName: shippingAddress.firstName.trim(),
+      lastName: shippingAddress.lastName.trim(),
+      streetAddress: shippingAddress.streetAddress.trim(),
+      aptNumber: shippingAddress.aptNumber.trim(),
+      state: shippingAddress.state.trim(),
+      zip: shippingAddress.zip.trim(),
+    };
+
+    if (
+      !nextAddress.firstName ||
+      !nextAddress.lastName ||
+      !nextAddress.streetAddress ||
+      !nextAddress.state ||
+      !nextAddress.zip
+    ) {
+      Alert.alert(
+        "Incomplete Address",
+        "Fill required shipping fields first, then tap Add New Address."
+      );
+      return;
+    }
+
+    setUserAddresses((prev) => {
+      const exists = prev.some(
+        (item) =>
+          item.value.firstName === nextAddress.firstName &&
+          item.value.lastName === nextAddress.lastName &&
+          item.value.streetAddress === nextAddress.streetAddress &&
+          item.value.state === nextAddress.state &&
+          item.value.zip === nextAddress.zip
+      );
+
+      if (exists) {
+        return prev;
+      }
+
+      const customCount = prev.filter((item) =>
+        item.id.startsWith("custom-")
+      ).length;
+
+      return [
+        ...prev,
+        {
+          id: `custom-${Date.now()}`,
+          label: `Custom Address ${customCount + 1}`,
+          value: nextAddress,
+        },
+      ];
+    });
+
+    setShowAddressOptions(true);
+    setShippingAddress(emptyShippingAddress);
+  };
 
   const handlePlaceOrder = async () => {
     if (!userId || !user) {
@@ -292,10 +429,36 @@ const CheckoutScreen = ({ navigation }) => {
       </View>
 
       <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.secondaryButton}>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={handleAddNewAddress}
+        >
           <Text style={styles.secondaryButtonText}>Add New Address</Text>
         </TouchableOpacity>
       </View>
+
+      {showAddressOptions && userAddresses.length > 0 && (
+        <View style={styles.savedAddressList}>
+          {userAddresses.map((addressItem) => (
+            <Pressable
+              key={addressItem.id}
+              style={styles.savedAddressItem}
+              onPress={() => {
+                setShippingAddress(addressItem.value);
+                if (sameAsBilling) {
+                  setBillingAddress(addressItem.value);
+                }
+                setShowAddressOptions(false);
+              }}
+            >
+              <Text style={styles.savedAddressTitle}>{addressItem.label}</Text>
+              <Text style={styles.savedAddressText} numberOfLines={2}>
+                {addressItem.value.streetAddress}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 
@@ -737,6 +900,28 @@ const styles = StyleSheet.create({
     color: "rgba(248, 55, 88, 1)",
     fontSize: 14,
     fontWeight: "600",
+  },
+  savedAddressList: {
+    marginTop: 12,
+    gap: 8,
+  },
+  savedAddressItem: {
+    borderWidth: 1,
+    borderColor: "#f1d7dd",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  savedAddressTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 3,
+  },
+  savedAddressText: {
+    fontSize: 12,
+    color: "#666",
   },
   summaryRow: {
     flexDirection: "row",

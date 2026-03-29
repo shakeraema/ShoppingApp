@@ -15,7 +15,11 @@ import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import GoogleSVGComponent from "../assets/Google";
-import { signup } from "../redux/authSlice";
+import { signup } from "../redux/thunks/signup.js";
+import { validateEmail } from "../formated/emailValidation.js";
+import { validatePassword } from "../formated/passwordValidation.js";
+
+
 
 const SignupScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -27,24 +31,24 @@ const SignupScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const loading = useSelector((state) => state.auth.loading);
 
-  //Email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const isEmailValid = emailRegex.test(email);
-  const showEmailError = email.trim() !== '' && !isEmailValid;
+  //email and password validation
+const isEmailValid = (email) => validateEmail(email);
+const isPasswordValid = (password) => validatePassword(password);
 
-  const isPasswordValid = password.trim().length >= 6;
+  const showEmailError = email.trim() !== '' && !isEmailValid(email);
+  
   const isConfirmPasswordValid = confirmPassword.trim().length > 0 && password === confirmPassword;
   const isFormValid =
     name.trim().length > 0 &&
     email.trim().length > 0 &&
     password.trim().length > 0 &&
     confirmPassword.trim().length > 0 &&
-    isEmailValid &&
-    isPasswordValid &&
+    isEmailValid(email) &&
+    isPasswordValid(password) &&
     isConfirmPasswordValid;
   const isSignupDisabled = loading || !isFormValid;
 
-  const showPasswordError = password.trim().length > 0 && !isPasswordValid;
+  const showPasswordError = password.trim().length > 0 && !isPasswordValid(password);
   const showConfirmPasswordError = confirmPassword.trim().length > 0 && !isConfirmPasswordValid;
 
   const handleSignup = async () => {
@@ -53,12 +57,12 @@ const SignupScreen = ({ navigation }) => {
       return;
     }
 
-    if (!isEmailValid) {
+    if (!isEmailValid(email)) {
       Alert.alert("Error", "Please enter a valid email address");
       return;
     }
 
-    if (!isPasswordValid) {
+    if (!isPasswordValid(password)) {
       Alert.alert("Error", "Password must be at least 6 characters");
       return;
     }
@@ -70,9 +74,9 @@ const SignupScreen = ({ navigation }) => {
 
     try {
       await dispatch(signup({ name: name.trim(), email: email.trim().toLowerCase(), password })).unwrap();
-      Alert.alert("Success", "Account created successfully!");
+      Alert.alert("Info", "Signup is disabled in strict DummyJSON auth mode.");
     } catch (error) {
-      Alert.alert("Signup Failed", error || "Please try again");
+      Alert.alert("Signup Unavailable", error || "Use existing DummyJSON credentials to login.");
     }
   };
 

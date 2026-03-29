@@ -8,61 +8,44 @@ import {
   Image,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from "react-native";
-import React, { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
-import { logout } from "../redux/authSlice";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getCategories, getProductsPage } from "../services/productsApi";
+import { fetchCart } from "../redux/thunks/index.js";
 
 const { width } = Dimensions.get("window");
+const HOME_SORT_ORDER_KEY = "homeSortOrder";
+const INITIAL_PRODUCTS_LIMIT = 10;
+const LOAD_MORE_PRODUCTS_LIMIT = 5;
 
-const products = [
-  {
-    id: "1",
-    name: "Redmi Note 4",
-    price: "₦ 45,000",
-    originalPrice: "₦ 65,000",
-    discount: "50% OFF",
-    image: require("../assets/Mi-Smart-Band-4-832x558-1573195785-removebg-preview 1.png"),
-  },
-  {
-    id: "2",
-    name: "Apple Watch - series 6",
-    price: "₦ 45,000",
-    originalPrice: "₦ 65,000",
-    discount: "50% OFF",
-    image: require("../assets/6_44mm-blu_889c7c8b-e883-41ab-856c-38c9dd970d12_1200x-removebg-preview 2.png"),
-  },
-  {
-    id: "3",
-    name: "Smart Watch D002",
-    price: "₦ 35,000",
-    originalPrice: "₦ 55,000",
-    discount: "40% OFF",
-    image: require("../assets/D002-removebg-preview 1.png"),
-  },
-  {
-    id: "4",
-    name: "Digital Watch",
-    price: "₦ 25,000",
-    originalPrice: "₦ 45,000",
-    discount: "45% OFF",
-    image: require("../assets/0x0-removebg-preview 1.png"),
-  },
-];
+// const shuffleProducts = (items = []) => {
+//   const cloned = [...items];
+//   for (let index = cloned.length - 1; index > 0; index -= 1) { 
+    // Implementing the Fisher-Yates shuffle algorithm to randomize the order of products in the list. This ensures that the products are displayed in a different order each time, providing a fresh experience for users when they visit the home screen.
 
-const categories = [
-  { id: "1", name: "Electronics", icon: "devices", color: "#FF6B35" },
-  { id: "2", name: "Fashion", icon: "checkroom", color: "#E8E8E8" },
-  { id: "3", name: "Bag", icon: "shopping-bag", color: "#E8E8E8" },
-  { id: "4", name: "Footwear", icon: "directions-run", color: "#E8E8E8" },
-  { id: "5", name: "Home", icon: "home", color: "#E8E8E8" },
-];
+    // const randomIndex = Math.floor(Math.random() * (index + 1)); 
+    // Generate a random index from 0 to the current index (inclusive) to select a random product from the remaining unshuffled portion of the array.
+
+    // [cloned[index], cloned[randomIndex]] = [cloned[randomIndex], cloned[index]]; // Swap the current product at index with the randomly selected product at randomIndex. This effectively moves the randomly selected product to its new position in the shuffled array.
+//   }
+//   return cloned;
+// };
 
 const HomeScreen = ({ navigation }) => {
-  const [menuVisible, setMenuVisible] = useState(false);
   const dispatch = useDispatch();
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingMoreProducts, setLoadingMoreProducts] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [totalProducts, setTotalProducts] = useState(0);
   const userData = useSelector((state) => state.auth.userData);
+  const profileImageSource = userData?.profileImage || userData?.image || null;
   const userId = userData?.id;
   const userCart = useSelector((state) => // Get the cart for the current user from the cart state, if the user is not logged in, return an empty array
     userId ? state.cart.cartsByUser[userId] || [] : []
@@ -72,24 +55,128 @@ const HomeScreen = ({ navigation }) => {
     0
   );
 
-   const handleLogout = () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to logout?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Logout",
-          onPress: async () => {
-            await dispatch(logout()).unwrap();
-          },
-          style: "destructive"
+  const promoProducts = useMemo(() => products.slice(0, 2), [products]);
+  const parsePrice = (priceValue) => {
+    if (typeof priceValue === "number") return priceValue;
+    if (typeof priceValue === "string") {
+      const numericValue = Number(priceValue.replace(/[^\d.]/g, ""));
+      return Number.isFinite(numericValue) ? numericValue : 0;
+    }
+    return 0;
+  };
+
+  const sortProductsByPrice = (items = [], order = "asc") =>
+    [...items].sort((firstProduct, secondProduct) => {
+      const firstPrice = parsePrice(firstProduct?.price);
+      const secondPrice = parsePrice(secondProduct?.price);
+      return order === "asc" ? firstPrice - secondPrice : secondPrice - firstPrice;
+    });
+
+  const handleToggleSort = () => {
+    const nextOrder = sortOrder === "asc" ? "desc" : "asc";
+    setSortOrder(nextOrder);
+    setProducts((previousProducts) => sortProductsByPrice(previousProducts, nextOrder));
+  };
+
+  const topCategories = useMemo(() => {
+    if (!Array.isArray(categories) || categories.length === 0) return []; 
+    // Check if categories is a valid array and has items, if not return an empty array to avoid errors when trying to shuffle or slice it. This ensures that the function can handle cases where the categories data might not be available or is not in the expected format without crashing the app.
+
+    const shuffled = [...categories].sort(() => Math.random() - 0.5); 
+    // Shuffle the categories array to randomize the order of categories displayed in the "Top Categories" section. This provides a dynamic experience for users each time they visit the home screen, as different categories may be highlighted as top categories on each visit.
+
+    return shuffled.slice(0, 7); 
+    // Return the first 7 categories from the shuffled array to be displayed as top categories on the home screen.
+  }, [categories]);
+
+  const hasMoreProducts = products.length < totalProducts;
+
+  useEffect(() => {
+    AsyncStorage.setItem(HOME_SORT_ORDER_KEY, sortOrder).catch(() => {});
+  }, [sortOrder]);
+
+  useEffect(() => {
+    if (!userId) return;
+    dispatch(fetchCart(userId));
+  }, [dispatch, userId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchInitialProducts = async () => {
+      setLoadingProducts(true);
+      try {
+        if (isMounted) {
+          const savedSortOrder = await AsyncStorage.getItem(HOME_SORT_ORDER_KEY);
+          const initialSortOrder =
+            savedSortOrder === "asc" || savedSortOrder === "desc"
+              ? savedSortOrder
+              : "asc";
+
+          const productsData = await getProductsPage({
+            limit: INITIAL_PRODUCTS_LIMIT,
+            skip: 0,
+          });
+          setSortOrder(initialSortOrder);
+          setProducts(sortProductsByPrice(productsData.products, initialSortOrder));
+          setTotalProducts(productsData.total);
         }
-      ]
-    );
+      } catch (error) {
+        if (isMounted) {
+          Alert.alert("Error", "Failed to fetch products");
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingProducts(false);
+        }
+      }
+    };
+
+    const fetchCategories = async () => {
+      setLoadingCategories(true);
+      try {
+        if (isMounted) {
+          const categoriesData = await getCategories();
+          setCategories(categoriesData);
+        }
+      } catch (error) {
+        if (isMounted) {
+          Alert.alert("Error", "Failed to fetch categories");
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingCategories(false);
+        }
+      }
+    };
+
+    fetchInitialProducts();
+    fetchCategories();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const loadMoreProducts = async () => {
+    if (loadingProducts || loadingMoreProducts || !hasMoreProducts) {
+      return;
+    }
+
+    setLoadingMoreProducts(true);
+    try {
+      const nextPage = await getProductsPage({
+        limit: LOAD_MORE_PRODUCTS_LIMIT,
+        skip: products.length,
+      });
+
+      setProducts((previousProducts) => [...previousProducts, ...nextPage.products]);
+      setTotalProducts(nextPage.total);
+    } catch (error) {
+      Alert.alert("Error", "Failed to load more products");
+    } finally {
+      setLoadingMoreProducts(false);
+    }
   };
 
   const renderProductItem = ({ item }) => (
@@ -121,12 +208,20 @@ const HomeScreen = ({ navigation }) => {
   );
 
   const renderCategoryItem = ({ item }) => (
-    <TouchableOpacity style={styles.categoryItem}>
+    <TouchableOpacity
+      style={styles.categoryItem}
+      onPress={() =>
+        navigation.navigate("Search", {
+          categorySlug: item.slug, // slug means the unique identifier for the category, which will be used in the Search screen to filter products based on the selected category. By passing the category slug as a parameter, we can ensure that the Search screen displays only products that belong to the chosen category, providing a more relevant and streamlined shopping experience for users. Additionally, we also pass the category name for display purposes in the Search screen header or other UI elements.
+          categoryName: item.name,
+        })
+      }
+    >
       <View style={[styles.categoryIcon, { backgroundColor: item.color }]}>
         <MaterialIcons
           name={item.icon}
           size={24}
-          color={item.color === "#FF6B35" ? "#fff" : "#666"}
+          color={item.color === "#FF6B35" ? "#fff" : "#ffffff"}
         />
       </View>
       <Text style={styles.categoryName} numberOfLines={1}>
@@ -144,10 +239,20 @@ const HomeScreen = ({ navigation }) => {
           style={styles.iconButton}
         >
           <View style={styles.avatarContainer}>
-          <MaterialIcons name="person" size={30} color="#ffffff" />
+            {profileImageSource ? (
+              <Image source={{ uri: profileImageSource }} style={styles.avatarImage} />
+            ) : (
+              <MaterialIcons name="person" size={30} color="#ffffff" />
+            )}
           </View>
         </TouchableOpacity>
         <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("DeveloperApiTest")}
+            style={styles.iconButton}
+          >
+            <MaterialIcons name="code" size={28} color="#000" />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate("Search")}
             style={styles.iconButton}
@@ -170,76 +275,110 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Greeting Section */}
-        <View style={styles.greetingSection}>
-          <Text style={styles.greetingText}>Hello {userData?.name || "User"} 👋</Text>
-          <Text style={styles.subGreetingText}>Let's start shopping!</Text>
-        </View>
+      <FlatList
+        data={products}
+        renderItem={renderProductItem}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.productsList}
+        onEndReached={loadMoreProducts}
+        onEndReachedThreshold={0.3}
+        ListHeaderComponent={(
+          <>
+            {/* Greeting Section */}
+            <View style={styles.greetingSection}>
+              <Text style={styles.greetingText}>Hello {userData?.name || "User"} 👋</Text>
+              <Text style={styles.subGreetingText}>Let's start shopping!</Text>
+            </View>
 
-        {/* Promotional Cards */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.promoContainer}
-          contentContainerStyle={styles.promoContent}
-        >
-          <View style={[styles.promoCard, { backgroundColor: "#FF7B54" }]}>
-            <Text style={styles.promoTitle}>20% OFF DURING THE</Text>
-            <Text style={styles.promoTitle}>WEEKEND</Text>
-            <TouchableOpacity
-              style={styles.promoButton}
-              onPress={() =>
-                navigation.navigate("ProductDetail", { product: products[0] })
-              }
+            {/* Promotional Cards */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.promoContainer}
+              contentContainerStyle={styles.promoContent}
             >
-              <Text style={styles.promoButtonText}>Get Now</Text>
-            </TouchableOpacity>
-          </View>
+              <View style={[styles.promoCard, { backgroundColor: "#FF7B54" }]}>
+                <Text style={styles.promoTitle}>10% OFF DURING THE</Text>
+                <Text style={styles.promoTitle}>WEEKEND</Text>
+                <TouchableOpacity
+                  style={styles.promoButton}
+                  onPress={() =>
+                    promoProducts[0] &&
+                    navigation.navigate("ProductDetail", { product: promoProducts[0] })
+                  }
+                  disabled={!promoProducts[0]}
+                >
+                  <Text style={styles.promoButtonText}>Get Now</Text>
+                </TouchableOpacity>
+              </View>
 
-          <View style={[styles.promoCard, { backgroundColor: "#4A90E2" }]}>
-            <Text style={styles.promoTitle}>20% OFF DURING THE</Text>
-            <Text style={styles.promoTitle}>WEEKEND</Text>
-            <TouchableOpacity
-              style={[styles.promoButton, { backgroundColor: "#4ECE5D" }]}
-              onPress={() =>
-                navigation.navigate("ProductDetail", { product: products[1] })
-              }
-            >
-              <Text style={styles.promoButtonTextWhite}>Get Now</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+              <View style={[styles.promoCard, { backgroundColor: "#4A90E2" }]}>
+                <Text style={styles.promoTitle}>20% OFF DURING THE</Text>
+                <Text style={styles.promoTitle}>WEEKEND</Text>
+                <TouchableOpacity
+                  style={[styles.promoButton, { backgroundColor: "#4ECE5D" }]}
+                  onPress={() =>
+                    promoProducts[1] &&
+                    navigation.navigate("ProductDetail", { product: promoProducts[1] })
+                  }
+                  disabled={!promoProducts[1]}
+                >
+                  <Text style={styles.promoButtonTextWhite}>Get Now</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
-        {/* Top Categories Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Top Categories</Text>
-          <TouchableOpacity onPress={() => navigation.navigate("Categories")}>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
-        </View>
+            {/* Top Categories Section */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Top Categories</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("Categories")}>
+                <Text style={styles.seeAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
 
-        <FlatList
-          data={categories}
-          renderItem={renderCategoryItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesList}
-        />
+            {loadingCategories ? (
+              <ActivityIndicator style={styles.sectionLoader} color="#FF6B35" />
+            ) : (
+              <FlatList
+                data={topCategories}
+                renderItem={renderCategoryItem}
+                keyExtractor={(item) => item.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoriesList}
+              />
+            )}
 
-        {/* Products Section */}
-        <View style={styles.productsSection}>
-          <FlatList
-            data={products}
-            renderItem={renderProductItem}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            scrollEnabled={false}
-            contentContainerStyle={styles.productsList}
-          />
-        </View>
-      </ScrollView>
+            {/* Products Section */}
+            <View style={styles.productsSection}>
+              <View style={styles.productsHeader}>
+                <Text style={styles.sectionTitle}>Products</Text>
+                <TouchableOpacity
+                  style={styles.sortControl}
+                  onPress={handleToggleSort}
+                >
+                  <MaterialIcons name="sort" size={20} color="#000" />
+                  <Text style={styles.sortText}>
+                    {sortOrder === "asc" ? "Low to High" : "High to Low"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {loadingProducts && (
+                <ActivityIndicator style={styles.sectionLoader} color="#FF6B35" />
+              )}
+            </View>
+          </>
+        )}
+        ListFooterComponent={
+          loadingMoreProducts ? (
+            <ActivityIndicator style={styles.loadMoreLoader} color="#FF6B35" />
+          ) : !loadingProducts && !hasMoreProducts && products.length > 0 ? (
+            <Text style={styles.endOfListText}>No more products</Text>
+          ) : null
+        }
+      />
     </View>
   );
 };
@@ -396,6 +535,24 @@ const styles = StyleSheet.create({
   productsSection: {
     paddingHorizontal: 12,
   },
+  productsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    marginBottom: 4,
+  },
+  sortControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  sortText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#000",
+    fontFamily: "Inter",
+  },
   productsList: {
     paddingBottom: 20,
   },
@@ -467,6 +624,20 @@ const styles = StyleSheet.create({
     color: "#999",
     textDecorationLine: "line-through",
   },
+  sectionLoader: {
+    marginBottom: 20,
+  },
+  loadMoreLoader: {
+    marginVertical: 16,
+  },
+  endOfListText: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 13,
+    fontFamily: "Inter",
+    marginTop: 6,
+    marginBottom: 18,
+  },
   avatarContainer: {
     width: 40,
     height: 40,
@@ -475,6 +646,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 15,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
 });
 

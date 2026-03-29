@@ -37,8 +37,8 @@ const WelcomeScreen = ({ navigation }) => {
           <Text style={styles.subText}>Find it here, buy it now!</Text>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => navigation.navigate("Signup")}
-          >
+            onPress={() => navigation.navigate("Signup")} 
+          > 
             <Text style={styles.buttonText}>Get Started</Text>
           </TouchableOpacity>
           <TouchableOpacity

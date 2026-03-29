@@ -15,7 +15,7 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { updateUserProfile } from "../redux/authSlice";
+import { updateUserProfile } from "../redux/thunks/updateUserProfile.js";
 import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -24,7 +24,9 @@ const EditProfileScreen = ({ navigation }) => {
   const userData = useSelector((state) => state.auth.userData);
 
   const [name, setName] = useState(userData?.name || "");
-  const [profileImage, setProfileImage] = useState(userData?.profileImage || null);
+  const [profileImage, setProfileImage] = useState(
+    userData?.profileImage || userData?.image || null
+  );
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

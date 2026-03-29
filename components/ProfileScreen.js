@@ -8,43 +8,76 @@ import {
   Alert,
   
 } from "react-native";
-import { useDispatch, useSelector } from "react-redux";
+import { useEffect, useState } from "react";
+import {  useSelector } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
-import { logout } from "../redux/authSlice";
+import { logout } from "../redux/thunks/logout.js";
+import { useDispatch } from "react-redux";
+// import { handleLogout } from "../hooks/logout.js";
 
 const ProfileScreen = ({ navigation }) => {
-  const menuItems = [
-    { id: "1", title: "My Cart", icon: "shopping-cart", screen: "Cart" },
-    { id: "2", title: "My Orders", icon: "shopping-bag", screen: "Orders" },
-    { id: "3", title: "My Wishlist", icon: "favorite-border", screen: "Home" },
-    { id: "4", title: "Payment Methods", icon: "payment", screen: "PaymentMethods" },
-    { id: "5", title: "Address Book", icon: "location-on", screen: "Home" },
-    { id: "6", title: "Settings", icon: "settings", screen: "Home" },
-    { id: "7", title: "Help Center", icon: "help-outline", screen: "Home" },
-  ];
+  const [menuItems, setMenuItems] = useState([]);
 
   const dispatch = useDispatch();
-  const userData = useSelector((state) => state.auth.userData);
-  
-   const handleLogout = () => {
-      Alert.alert(
-        "Logout",
-        "Are you sure you want to logout?",
-        [
-          {
-            text: "Cancel",
-            style: "cancel"
-          },
-          {
-            text: "Logout",
-            onPress: async () => {
-              await dispatch(logout()).unwrap();
+
+  const handleLogout = () => {
+        Alert.alert(
+          "Logout",
+          "Are you sure you want to logout?",
+          [
+            {
+              text: "Cancel",
+              style: "cancel"
             },
-            style: "destructive"
-          }
-        ]
-      );
+            {
+              text: "Logout",
+              onPress: async () => {
+                await dispatch(logout()).unwrap();
+              },
+              style: "destructive"
+            }
+          ]
+        );
+      };
+
+  const userData = useSelector((state) => state.auth.userData);
+  const profileImageSource = userData?.profileImage || userData?.image || null;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchMenuItems = async () => {
+      try {
+        const response = await fetch("https://dummyjson.com/c/b216-eb89-40e5-8f02");
+        const data = await response.json();
+        const apiMenuItems = Array.isArray(data?.menuItems) ? data.menuItems : [];
+
+        const normalizedItems = apiMenuItems
+          .filter((item) => item?.id && item?.title && item?.icon && item?.screen)
+          .map((item) => ({
+            id: String(item.id),
+            title: item.title,
+            icon: item.icon,
+            screen: item.screen,
+          }));
+
+        if (isMounted && normalizedItems.length > 0) {
+          setMenuItems(normalizedItems);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setMenuItems([]);
+        }
+      }
     };
+
+    fetchMenuItems();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+  
   
 
   return (
@@ -62,10 +95,15 @@ const ProfileScreen = ({ navigation }) => {
         {/* Profile Info */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <MaterialIcons name="person" size={50} color="#fff" />
+            {profileImageSource ? (
+              <Image source={{ uri: profileImageSource }} style={styles.avatarImage} />
+            ) : (
+              <MaterialIcons name="person" size={50} color="#fff" />
+            )}
           </View>
           <Text style={styles.userName}>{userData?.name || "User"}</Text>
           <Text style={styles.userEmail}>{userData?.email || "user@example.com"}</Text>
+          <Text style={styles.userGender}>{userData?.gender || "Not specified"}</Text>
           <TouchableOpacity
             style={styles.editButton}
             onPress={() => navigation.navigate("EditProfile")}
@@ -141,6 +179,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 15,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   userName: {
     fontSize: 24,
@@ -149,6 +193,11 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   userEmail: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 20,
+  },
+  userGender: {
     fontSize: 14,
     color: "#666",
     marginBottom: 20,

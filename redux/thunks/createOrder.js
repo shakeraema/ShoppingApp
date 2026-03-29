@@ -1,6 +1,8 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createAsyncThunk } from "@reduxjs/toolkit";
+// import { getUserId } from "../formated/getUserId.js";
 
 const getUserId = (state) => state.auth.userData?.id || null;
+
 
 export const createOrder = createAsyncThunk(
   "orders/createOrder",
@@ -33,32 +35,3 @@ export const createOrder = createAsyncThunk(
     return { userId, order };
   }
 );
-
-const ordersSlice = createSlice({
-  name: "orders",
-  initialState: {
-    ordersByUser: {},
-    loading: false,
-    error: null,
-  },
-  reducers: {},
-  extraReducers: (builder) => {
-    builder
-      .addCase(createOrder.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(createOrder.fulfilled, (state, action) => {
-        const { userId, order } = action.payload;
-        const existing = state.ordersByUser[userId] || [];
-        state.ordersByUser[userId] = [order, ...existing];
-        state.loading = false;
-      })
-      .addCase(createOrder.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload || "Failed to place order";
-      });
-  },
-});
-
-export default ordersSlice.reducer;

@@ -6,60 +6,61 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MaterialIcons } from "@expo/vector-icons";
+import {
+  getAllProducts,
+  getProductsByCategory,
+  searchProducts,
+} from "../services/productsApi";
 
-const allProducts = [
-  {
-    id: "1",
-    name: "Redmi Note 4",
-    price: "₦ 45,000",
-    originalPrice: "₦ 65,000",
-    discount: "50% OFF",
-    image: require("../assets/Mi-Smart-Band-4-832x558-1573195785-removebg-preview 1.png"),
-  },
-  {
-    id: "2",
-    name: "Apple Watch - series 6",
-    price: "₦ 45,000",
-    originalPrice: "₦ 65,000",
-    discount: "50% OFF",
-    image: require("../assets/6_44mm-blu_889c7c8b-e883-41ab-856c-38c9dd970d12_1200x-removebg-preview 2.png"),
-  },
-  {
-    id: "3",
-    name: "Smart Watch D002",
-    price: "₦ 35,000",
-    originalPrice: "₦ 55,000",
-    discount: "40% OFF",
-    image: require("../assets/D002-removebg-preview 1.png"),
-  },
-  {
-    id: "4",
-    name: "Digital Watch",
-    price: "₦ 25,000",
-    originalPrice: "₦ 45,000",
-    discount: "45% OFF",
-    image: require("../assets/0x0-removebg-preview 1.png"),
-  },
-];
+const SearchScreen = ({ navigation, route }) => {
+  const categorySlug = route?.params?.categorySlug || null;
+  const categoryName = route?.params?.categoryName || "";
 
-const SearchScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredProducts, setFilteredProducts] = useState(allProducts);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const handleSearch = (text) => {
-    setSearchQuery(text);
-    if (text.trim() === "") {
-      setFilteredProducts(allProducts);
-    } else {
-      const filtered = allProducts.filter((product) =>
-        product.name.toLowerCase().includes(text.toLowerCase()),
-      );
-      setFilteredProducts(filtered);
+  const loadCategoryProducts = async () => {
+    setLoading(true);
+    try {
+      const result = categorySlug
+        ? await getProductsByCategory(categorySlug)
+        : await getAllProducts();
+      setProducts(result);
+    } catch (error) {
+      Alert.alert("Error", "Failed to fetch products");
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleSearch = async (text) => {
+    setSearchQuery(text);
+
+    if (!text.trim()) {
+      loadCategoryProducts();
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await searchProducts(text);
+      setProducts(result);
+    } catch (error) {
+      Alert.alert("Error", "Failed to search products");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCategoryProducts();
+  }, [categorySlug]);
 
   const renderProductItem = ({ item }) => (
     <TouchableOpacity
@@ -99,7 +100,11 @@ const SearchScreen = ({ navigation }) => {
           <MaterialIcons name="search" size={20} color="#999" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search products..."
+            placeholder={
+              categoryName
+                ? `Search in ${categoryName}...`
+                : "Search products..."
+            }
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={handleSearch}
@@ -112,15 +117,14 @@ const SearchScreen = ({ navigation }) => {
           )}
         </View>
       </View>
-
       <View style={styles.content}>
-        {filteredProducts.length > 0 ? (
+        {loading ? (
+          <ActivityIndicator size="large" color="rgba(248, 55, 88, 1)" />
+        ) : products.length > 0 ? (
           <>
-            <Text style={styles.resultText}>
-              {filteredProducts.length} products found
-            </Text>
+            <Text style={styles.resultText}>{products.length} products found</Text>
             <FlatList
-              data={filteredProducts}
+              data={products}
               renderItem={renderProductItem}
               keyExtractor={(item) => item.id}
               numColumns={2}

@@ -8,20 +8,82 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import React from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useDispatch, useSelector } from "react-redux";
 import { MaterialIcons } from "@expo/vector-icons";
-import { removeFromCart, updateQuantity } from "../redux/cartSlice";
+import { fetchCart, removeFromCart, updateQuantity } from "../redux/thunks/index.js";
 
 const CartScreen = ({ navigation }) => {
   const dispatch = useDispatch();
-  const { cartsByUser, loading } = useSelector((state) => state.cart);
+  const { cartsByUser, cartIdByUser, loading, error } = useSelector((state) => state.cart);
   const userId = useSelector((state) => state.auth.userData?.id);
+  const [showLoadingTimeout, setShowLoadingTimeout] = useState(false);
   const cart = (userId && cartsByUser[userId]) || [];
+  const activeCartId = userId ? cartIdByUser?.[userId] || "n/a" : "n/a";
   const getTotalPrice = () =>
     cart.reduce((total, item) => total + item.productPrice * item.quantity, 0);
 
-  const handleRemoveItem = (itemId) => {
+  const getErrorMessage = (error, fallback) => {
+    if (typeof error === "string") return error;
+    if (error && typeof error === "object") {
+      if (typeof error.message === "string") return error.message;
+      try {
+        return JSON.stringify(error);
+      } catch (_serializationError) {
+        return fallback;
+      }
+    }
+    return fallback;
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return undefined;
+      setShowLoadingTimeout(false);
+      dispatch(fetchCart(userId));
+      return undefined;
+    }, [dispatch, userId])
+  );
+
+  useEffect(() => {
+    if (!loading) {
+      setShowLoadingTimeout(false);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setShowLoadingTimeout(true);
+    }, 10000);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [loading]);
+
+  const handleIncreaseQuantity = async (itemId, currentQuantity, sourceCartId) => {
+    try {
+      await dispatch(
+        updateQuantity({ itemId, quantity: currentQuantity + 1, cartId: sourceCartId })
+      ).unwrap();
+    } catch (error) {
+      Alert.alert("Error", getErrorMessage(error, "Failed to update quantity"));
+    }
+  };
+
+  const handleDecreaseQuantity = async (itemId, currentQuantity, sourceCartId) => {
+    if (currentQuantity > 1) {
+      try {
+        await dispatch(
+          updateQuantity({ itemId, quantity: currentQuantity - 1, cartId: sourceCartId })
+        ).unwrap();
+      } catch (error) {
+        Alert.alert("Error", getErrorMessage(error, "Failed to update quantity"));
+      }
+    }
+  };
+
+  const handleRemoveItem = (itemId, sourceCartId) => {
     Alert.alert(
       "Remove Item",
       "Are you sure you want to remove this item from cart?",
@@ -31,38 +93,16 @@ const CartScreen = ({ navigation }) => {
           text: "Remove",
           onPress: async () => {
             try {
-              await dispatch(removeFromCart(itemId)).unwrap();
+              await dispatch(removeFromCart({ itemId, cartId: sourceCartId })).unwrap();
               Alert.alert("Success", "Item removed from cart");
             } catch (error) {
-              Alert.alert("Error", error || "Failed to remove item");
+              Alert.alert("Error", getErrorMessage(error, "Failed to remove item"));
             }
           },
           style: "destructive",
         },
       ]
     );
-  };
-
-  const handleIncreaseQuantity = async (itemId, currentQuantity) => { //itemId mane kon item er quantity update korte hobe, currentQuantity mane oi item er current quantity
-    try {
-      await dispatch(
-        updateQuantity({ itemId, quantity: currentQuantity + 1 })
-      ).unwrap(); //dispatch er maddhome updateQuantity action call kora, jekhane itemId and new quantity pass kora hoyeche, unwrap mane promise ke resolve kora, jodi update successful hoye tobe success message deya hobe, otherwise error message deya hobe
-    } catch (error) {
-      Alert.alert("Error", "Failed to update quantity");
-    }
-  };
-
-  const handleDecreaseQuantity = async (itemId, currentQuantity) => {
-    if (currentQuantity > 1) {
-      try {
-        await dispatch(
-          updateQuantity({ itemId, quantity: currentQuantity - 1 })
-        ).unwrap();
-      } catch (error) {
-        Alert.alert("Error", "Failed to update quantity");
-      }
-    }
   };
 
   const handleNavigateToProduct = (item) => {
@@ -96,14 +136,18 @@ const CartScreen = ({ navigation }) => {
           <View style={styles.quantityContainer}>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => handleDecreaseQuantity(item.id, item.quantity)}
+              onPress={() =>
+                handleDecreaseQuantity(item.id, item.quantity, item.sourceCartId)
+              }
             >
               <MaterialIcons name="remove" size={18} color="#000" />
             </TouchableOpacity>
             <Text style={styles.quantityText}>{item.quantity}</Text>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => handleIncreaseQuantity(item.id, item.quantity)}
+              onPress={() =>
+                handleIncreaseQuantity(item.id, item.quantity, item.sourceCartId)
+              }
             >
               <MaterialIcons name="add" size={18} color="#000" />
             </TouchableOpacity>
@@ -117,7 +161,7 @@ const CartScreen = ({ navigation }) => {
 
       <TouchableOpacity
         style={styles.deleteButton}
-        onPress={() => handleRemoveItem(item.id)}
+        onPress={() => handleRemoveItem(item.id, item.sourceCartId)}
       >
         <MaterialIcons name="delete-outline" size={22} color="#FF6B6B" />
       </TouchableOpacity>
@@ -140,7 +184,7 @@ const CartScreen = ({ navigation }) => {
     </View>
   );
 
-  if (loading && cart.length === 0) {
+  if (loading && cart.length === 0 && !error && !showLoadingTimeout) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="rgba(248, 55, 88, 1)" />
@@ -155,12 +199,32 @@ const CartScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={34} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Cart</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>My Cart</Text>
+          <Text style={styles.debugText}>User: {userId || "n/a"} • Cart: {activeCartId}</Text>
+        </View>
         <View style={{ width: 24 }} />
       </View>
 
       {/* Cart Items List */}
-      {cart.length > 0 ? (
+      {(error || showLoadingTimeout) && cart.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <MaterialIcons name="error-outline" size={80} color="#ccc" />
+          <Text style={styles.emptyTitle}>Failed to load cart</Text>
+          <Text style={styles.emptySubtitle}>
+            {error || "Request took too long. Please retry."}
+          </Text>
+          <TouchableOpacity
+            style={styles.continueShoppingButton}
+            onPress={() => {
+              setShowLoadingTimeout(false);
+              dispatch(fetchCart(userId));
+            }}
+          >
+            <Text style={styles.continueShoppingText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : cart.length > 0 ? (
         <>
           <FlatList
             data={cart}
@@ -229,6 +293,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: "#000",
+  },
+  headerCenter: {
+    alignItems: "center",
+  },
+  debugText: {
+    fontSize: 11,
+    color: "#666",
+    marginTop: 2,
   },
   listContent: {
     paddingHorizontal: 20,

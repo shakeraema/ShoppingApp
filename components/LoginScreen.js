@@ -4,66 +4,43 @@ import {
   View,
   TextInput,
   TouchableOpacity,
-  Image,
   KeyboardAvoidingView,
   ScrollView,
   Platform,
   Alert,
   ActivityIndicator,
 } from "react-native";
-import React, { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import {
   MaterialIcons,
   FontAwesome5,
 } from "@expo/vector-icons";
 import GoogleSVGComponent from "../assets/Google";
-import { login } from "../redux/authSlice";
+import { validatePassword } from "../formated/passwordValidation.js";
+import { useAuth } from "../hooks/useAuth.js";
+import { useLoginForm } from "../hooks/useLoginForm.js";
 
-const LoginScreen = ({ navigation }) => { // Add navigation prop to access navigation functions
-  const [showPassword, setShowPassword] = useState(false); //password vissibility show korar jonne state variable
-  const [email, setEmail] = useState(""); //email input er value store korar jonne state variable
-  const [password, setPassword] = useState(""); //password input er value store korar jonne state variable
-  const dispatch = useDispatch(); //redux action dispatch korar jonne useDispatch hook
-  const loading = useSelector((state) => state.auth.loading); //redux store theke loading state access korar jonne useSelector hook
+const isPasswordValid = (password) => validatePassword(password);
 
-  // Email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; 
-  // \s@+ means one or more characters that are not whitespace or @, followed by an @ symbol, followed by one or more characters that are not whitespace or @, followed by a dot, followed by one or more characters that are not whitespace or @. This is a basic regex for validating email formats.
-  const isEmailValid = emailRegex.test(email); 
-  //email input er value regex pattern er sathe match kore kina check korar jonne variable
-  const showEmailError = email.trim() !== '' && !isEmailValid; 
-  //email input er value empty na hole and also (eki sathe) regex pattern er sathe match na korle error message show korar jonne variable
 
-  const isPasswordValid = password.length >= 6;
-  //password input er value minimum 6 character kina check korar jonne variable
-  const isFormValid = email.trim() && password.trim() && isEmailValid && isPasswordValid; 
-  //email and password input er value empty na hole and also email valid hole password valid hole form valid hobe, otherwise form invalid hobe. Login button ke disable korar jonne variable
-  const isLoginDisabled = loading || !isFormValid; //Login button ke disable korar jonne variable, loading state true hole or form invalid hole button disable hobe
+  const LoginScreen = ({ navigation }) => {
+  const { loginUser, loading } = useAuth();
+  const {
+    email,
+    password,
+    setEmail,
+    setPassword,
+    isFormValid,
+    showPassword,
+    setShowPassword,
+  } = useLoginForm();
 
-  const handleLogin = async () => { //Login button click korar jonne function
-    if (!email || !password) { //email or password input empty hole error message show korar jonne condition
-      Alert.alert("Error", "Please enter both email and password");
-      return;
-    }
-
-    if (!isEmailValid) { //email input er value valid na hole error message show korar jonne condition
-      Alert.alert("Error", "Please enter a valid email address");
-      return;
-    }
-
-    if (!isPasswordValid) { //password input er value valid na hole error message show korar jonne condition
-      Alert.alert("Error", "Password must be at least 6 characters long");
-      return;
-    }
-
+  const handleLogin = async () => {
     try {
-      await dispatch(login({ email: email.trim().toLowerCase(), password })).unwrap();
+      await loginUser({ email, password });
     } catch (error) {
-      Alert.alert("Login Failed", error || "Please check your credentials");
+      Alert.alert("Login Failed", error);
     }
   };
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -85,24 +62,20 @@ const LoginScreen = ({ navigation }) => { // Add navigation prop to access navig
 
           <View style={styles.inputContainer}>
             <MaterialIcons
-              name="email"
+              name="person"
               size={20}
               color="#999"
               style={styles.icon}
             />
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Username or Email"
               placeholderTextColor="#999"
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
-              keyboardType="email-address"
             />
           </View>
-          {showEmailError && (
-            <Text style={styles.errorText}>Please enter a valid email address</Text>
-          )}
 
           <View style={styles.inputContainer}>
             <MaterialIcons
@@ -133,18 +106,21 @@ const LoginScreen = ({ navigation }) => { // Add navigation prop to access navig
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.loginButton, isLoginDisabled && styles.loginButtonDisabled]}
+            style={[styles.loginButton, !isFormValid && styles.loginButtonDisabled]}
             onPress={handleLogin}
-            disabled={isLoginDisabled}
+            disabled={!isFormValid || loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={[styles.loginButtonText, isLoginDisabled && styles.loginButtonTextDisabled]}>
+              <Text style={[styles.loginButtonText, !isFormValid && styles.loginButtonTextDisabled]}>
                 Login
               </Text>
             )}
           </TouchableOpacity>
+          {password && !isPasswordValid(password) && (
+            <Text style={styles.errorText}>Password must be at least 6 characters</Text>
+          )}
 
           <Text style={styles.orText}>- OR Continue with -</Text>
 

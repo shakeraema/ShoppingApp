@@ -1,31 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
+import { getDefaultSavedState } from "../../formated/getDefaultSavedState.js";
 
-const emptyAddress = {
-  firstName: "",
-  lastName: "",
-  streetAddress: "",
-  aptNumber: "",
-  state: "",
-  zip: "",
-};
-
-const emptyBillingAddress = {
-  streetAddress: "",
-  aptNumber: "",
-  state: "",
-  zip: "",
-};
-
-const getDefaultSavedState = (state, userId) => {
-  return (
-    state.savedByUser[userId] || {
-      savedShippingAddress: emptyAddress,
-      savedBillingAddress: emptyBillingAddress,
-      savedPaymentMethod: "card",
-      savedCardDetails: { number: "", expiry: "", cvv: "" },
-    }
-  );
-};
 
 const checkoutSlice = createSlice({
   name: "checkout",

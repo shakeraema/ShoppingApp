@@ -4,6 +4,7 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import React from "react";
@@ -76,6 +77,28 @@ const OrderDetailScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleNavigateToProduct = (item) => {
+    // Transform cart item to product format expected by ProductDetailScreen
+    const product = {
+      id: item.productId || item.id,
+      name: item.productName,
+      price: `₦ ${item.productPrice.toLocaleString()}`,
+      image: typeof item.productImage === "string" ? { uri: item.productImage } : item.productImage,
+      description: item.productDescription || null,
+    };
+    navigation.navigate("ProductDetail", { product });
+  };
+
+  const getImageSource = (productImage) => {
+    if (typeof productImage === "string" && productImage.trim()) {
+      return { uri: productImage };
+    }
+    if (productImage && typeof productImage === "object") {
+      return productImage;
+    }
+    return null;
+  };
+
   if (!order) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -133,12 +156,26 @@ const OrderDetailScreen = ({ navigation, route }) => {
         </View>
 
         {/* Order Items */}
+        
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Order Items</Text>
           {order.items.map((item, index) => (
-            <View key={index} style={styles.itemCard}>
+          <TouchableOpacity 
+                  key={index}
+                  style={styles.productTouchable}
+                  onPress={() => handleNavigateToProduct(item)}
+                  activeOpacity={0.7}
+                >
+            <View style={styles.itemCard}>
               <View style={styles.itemImagePlaceholder}>
-                <MaterialIcons name="shopping-bag" size={30} color="#999" />
+                {getImageSource(item.productImage) ? (
+                  <Image
+                    source={getImageSource(item.productImage)}
+                    style={styles.itemImage}
+                  />
+                ) : (
+                  <MaterialIcons name="shopping-bag" size={30} color="#999" />
+                )}
               </View>
               <View style={styles.itemDetails}>
                 <Text style={styles.itemName} numberOfLines={2}>
@@ -151,8 +188,10 @@ const OrderDetailScreen = ({ navigation, route }) => {
                 ₦{(item.productPrice * item.quantity).toFixed(2)}
               </Text>
             </View>
+            </TouchableOpacity>
           ))}
         </View>
+        
 
         {/* Order Summary */}
         <View style={styles.section}>
@@ -343,6 +382,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
+  itemImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
+    resizeMode: "cover",
+  },
   itemDetails: {
     flex: 1,
   },
@@ -422,6 +467,22 @@ const styles = StyleSheet.create({
   },
   paymentText: {
     fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+  },
+  productTouchable: {
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  productTouchableActive: {
+    backgroundColor: "#f0f0f0",
+  },
+  productTouchableDisabled: {
+    opacity: 0.6,
+    backgroundColor: "#f0f0f0",
+  },
+  productName: {
+    fontSize: 15,
     fontWeight: "600",
     color: "#000",
   },
